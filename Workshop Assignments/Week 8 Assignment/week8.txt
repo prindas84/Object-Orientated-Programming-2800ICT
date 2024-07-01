@@ -1,0 +1,242 @@
+#ifndef CLASSES_HPP
+#define CLASSES_HPP
+#include <vector>
+#include <string>
+using namespace std;
+
+// CUSTOM EXCEPTION CLASS
+class MatrixException : public exception
+{
+private:
+    string message;
+
+public:
+    MatrixException(const string &msg) : message(msg) {}
+    // Override what() to return the custom message
+    virtual const char *what() const throw()
+    {
+        return message.c_str();
+    }
+};
+
+// MAXTIX CLASS.
+class Matrix
+{
+private:
+    int row;
+    int col;
+    vector<vector<int>> int_matrix;
+
+public:
+    Matrix(int row = 0, int col = 0) : row(row), col(col), int_matrix(row, std::vector<int>(col, 0)) {} // Default Constructor.
+    ~Matrix() {}                                                                                        // Destructor
+    int get_row() const { return row; }                                                                 // Get the number of rows
+    int get_col() const { return col; }                                                                 // Get the number of cols
+    int at(int row, int col) const { return int_matrix[row][col]; }                                     // Get the value of the matrix at (i, j)
+    void fill_rand_value();                                                                             // Fill matrix with random values.
+    Matrix multiply(const Matrix &v2) const;                                                            // Multiply - single thread.
+    Matrix multiplyParallel(const Matrix &v2, int num_threads) const;                                   // Multiply - multi thread.
+};
+
+#endif
+
+
+#include <ctime>
+#include <cstdlib>
+#include <thread>
+#include <vector>
+#include "classes.hpp"
+#define MIN_VALUE 1
+#define MAX_VALUE 100
+using namespace std;
+
+void Matrix::fill_rand_value()
+{
+    srand(time(nullptr));
+    for (int i = 0; i < int_matrix.size(); i++)
+    {
+        for (int j = 0; j < int_matrix[i].size(); j++)
+        {
+            int_matrix[i][j] = rand() % (MAX_VALUE - MIN_VALUE) + MIN_VALUE;
+        }
+    }
+}
+
+Matrix Matrix::multiply(const Matrix &v2) const
+{
+    // Throw an error is mismatched sizes.
+    if (get_col() != v2.get_row())
+    {
+        throw MatrixException("Matrix dimensions must match!");
+    }
+
+    // Initialise the matrix to return.
+    Matrix result(row, v2.get_col());
+
+    // Process the multiplication.
+    for (int i = 0; i < row; i++)
+    {
+        for (int j = 0; j < v2.get_col(); j++)
+        {
+            for (int k = 0; k < col; k++)
+            {
+                result.int_matrix[i][j] += int_matrix[i][k] * v2.int_matrix[k][j];
+            }
+        }
+    }
+    return result;
+}
+
+Matrix Matrix::multiplyParallel(const Matrix &v2, int num_threads) const
+{
+    // Throw an error is mismatched sizes.
+    if (get_col() != v2.get_row())
+    {
+        throw MatrixException("Matrix dimensions must match!");
+    }
+
+    // Calculate the number of rows each thread will handle.
+    // Equation works out larger number so integer division doesn't create an uneven distribution.
+    int rows_per_thread = (row + num_threads - 1) / num_threads;
+
+    // Create a vector to store the threads
+    std::vector<std::thread> threads;
+
+    // Initialise the matrix to return.
+    Matrix result(row, v2.get_col());
+
+    // Process the multiplication at the given start row to the given end row.
+    auto calculate_rows = [&](int start_row, int end_row)
+    {
+        for (int i = start_row; i < end_row && i < row; i++)
+        {
+            for (int j = 0; j < v2.get_col(); j++)
+            {
+                for (int k = 0; k < col; k++)
+                {
+                    result.int_matrix[i][j] += int_matrix[i][k] * v2.int_matrix[k][j];
+                }
+            }
+        }
+    };
+
+    // Create and start the threads using the correct start and end position.
+    for (int i = 0; i < num_threads; i++)
+    {
+        int start_row = i * rows_per_thread;
+        int end_row = (i + 1) * rows_per_thread;
+        threads.emplace_back(calculate_rows, start_row, end_row);
+    }
+
+    // Join the threads.
+    for (auto &thread : threads)
+    {
+        thread.join();
+    }
+
+    return result;
+}
+
+
+#include <vector>
+#include <thread>
+#include <functional>
+#include <iostream>
+#include <chrono>
+#include "classes.hpp"
+using namespace std;
+
+
+
+// MUST NOT CHANGE
+int demo(int row_1, int col_1, int row_2, int col_2, int num_threads=2) {
+
+    // Create two large matrices
+    Matrix matrixA(row_1, col_1);  // Initialize with 0
+    matrixA.fill_rand_value();
+    Matrix matrixB(row_2, col_2);  // Initialize with 0
+    matrixB.fill_rand_value();
+
+    // Perform single-threaded matrix multiplication
+    auto start = chrono::high_resolution_clock::now();
+    Matrix resultSingle = matrixA.multiply(matrixB);
+    auto end = chrono::high_resolution_clock::now();
+    chrono::duration<double, milli> singleThreadTime = end - start;
+    cout << "Single-threaded multiplication took " << singleThreadTime.count() << " ms." << endl;
+
+    // Perform multithreaded matrix multiplication
+    start = chrono::high_resolution_clock::now();
+    Matrix resultMulti = matrixA.multiplyParallel(matrixB, num_threads);  // Using 4 threads
+    end = chrono::high_resolution_clock::now();
+    chrono::duration<double, milli> multiThreadTime = end - start;
+    cout << "Multithreaded multiplication took " << multiThreadTime.count() << " ms." << endl;
+
+    // Compare results for validation purposes
+    cout << "Validating results..." << endl;
+    bool valid = true;
+    for (int i = 0; i < row_1; i++) {
+        for (int j = 0; j < col_2; j++) {
+            if (resultSingle.at(i, j) != resultMulti.at(i, j)) {
+                valid = false;
+                break;
+            }
+        }
+        if (!valid) break;
+    }
+    if (valid) {
+        cout << "Results are identical!" << endl;
+    } else {
+        cout << "Results differ!" << endl;
+    }
+
+    return 0;
+}
+
+void SafeIntInput(int &input, const string& info)
+{
+    cout<<info;
+    cin>>input;
+
+    while(cin.fail() or input<1)
+    {
+        cout<<"Invalid input. "<<info;
+        cin.clear();
+        cin.ignore(numeric_limits<streamsize>::max(),'\n');
+        cin>>input;
+    }
+}
+
+int main()
+{
+    int row_1 = 0, col_1 = 0, row_2 = 0, col_2 = 0, num_threads=2;
+    char QUIT = 'N';
+    while (!(tolower(QUIT) == 'y'))
+    {
+        SafeIntInput(row_1,"Enter the number of rows of Matrix A: ");
+        SafeIntInput(col_1,"Enter the number of cols of Matrix A: ");
+        SafeIntInput(row_2,"Enter the number of rows of Matrix B: ");
+        SafeIntInput(col_2,"Enter the number of cols of Matrix B: ");
+
+        SafeIntInput(num_threads,"Enter the number of threads: ");
+
+        try
+        {
+            demo(row_1,col_1,row_2,col_2,num_threads);
+        }
+        catch(const exception &e)
+        {
+            cout << e.what() << endl;
+        }
+
+        cout<<"Quit (Y/N): ";
+        while(!(cin>>QUIT) or !(tolower(QUIT) == 'y' or tolower(QUIT) == 'n'))
+        {
+            cout<<"Invalid input: the input must be either Y or N. Quit (Y/N):";
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        }
+        cout<<endl;
+
+    }
+}
+

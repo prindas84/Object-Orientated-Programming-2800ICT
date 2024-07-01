@@ -1,0 +1,309 @@
+#include <iostream>
+#include <cstdlib>
+#include <ctime>
+#include "exception_class.cpp"
+#include "functions.cpp"
+#include "vector_class.cpp"
+using namespace std;
+
+
+int main()
+{
+    
+    srand(time(nullptr));
+    bool quit = false;
+    vector<NewVector> vectors;
+
+    // Loop while the user has not quit.
+    while (!quit)
+    {
+        
+        // Get two vectors from the user. Request the size and prompt for the input method.
+        for (int i = 0; i < 2; i++)
+        {
+            int size = process_input();
+            bool manual_input = process_yes_or_no("Mannually input values of this vector (Y/N): ");
+
+            // If the user requests manual input...
+            if (manual_input) 
+            {
+                vector<float> input_data(size);
+                get_manual_input(input_data);
+                vectors.push_back(NewVector(input_data));
+                cout << "Vector vec" << i + 1 << ":" << endl;
+                cout << vectors[i] << endl;
+            }
+            // If the user requests random generation...
+            else
+            {
+                vectors.push_back(NewVector(size));
+                cout << "Vector vec" << i + 1 << ":" << endl;
+                cout << vectors[i] << endl;
+            }
+        }
+
+        // Try the overload operations. Display the message if error occurs.
+        try
+        {
+            vectors[0] * vectors[1];
+            vectors[0] / vectors[1];  
+        }
+        catch (const VectorOperationException &msg)
+        {
+            cerr << "Vector operation error: " << msg.what() << endl;
+        }
+        
+        // Clear the vector of vectors and prompt user for repeat.
+        vectors.clear();
+        quit = process_yes_or_no("Quit (Y/N): ");
+        
+    }
+}
+
+
+#include <algorithm>
+#include <iostream>
+#include <vector>
+using namespace std;
+
+
+// Vector class.
+class NewVector
+{
+private:
+    vector<float> data;
+
+public:
+    // Default constructor function for random data generation.
+    NewVector(int num_elems = 10)
+    {
+        data.resize(num_elems);
+        generate(data.begin(), data.end(), [&]() { return static_cast<float>(1 + rand() % 99) / 10.0; });
+    }
+    // Secondary constructor function for predetermined data input.
+    NewVector(vector<float> user_input)
+    {
+        data.insert(data.end(), user_input.begin(), user_input.end());
+    }
+    size_t get_size() const { return data.size(); }
+    vector<float> get_data() const { return data; }
+    // Overloaded functions.
+    NewVector operator*(const NewVector &v2) const;
+    NewVector operator/(const NewVector &v2) const;
+    friend ostream &operator<<(ostream &out, const NewVector &v1);
+};
+
+// Multiplication functor.
+class Multiplication
+{
+public:
+    NewVector operator()(const NewVector &v1, const NewVector &v2)
+    {
+        // Get the data for each vector object.
+        vector<float> data1 = v1.get_data();
+        vector<float> data2 = v2.get_data();
+
+        // Perform element-wise multiplication and store the result in a new vector.
+        vector<float> result_data;
+        for (size_t i = 0; i < v1.get_size(); i++)
+        {
+            result_data.push_back(data1[i] * data2[i]);
+        }
+
+        // Return the new vector with the result data.
+        return NewVector(result_data);
+    }
+};
+
+// Division functor.
+class Division
+{
+public:
+    NewVector operator()(const NewVector &v1, const NewVector &v2)
+    {
+        // Get the data for each vector object.
+        vector<float> data1 = v1.get_data();
+        vector<float> data2 = v2.get_data();
+
+        // Perform element-wise division and store the result in a new vector.
+        vector<float> result_data;
+        for (size_t i = 0; i < v1.get_size(); i++)
+        {
+            if (data1[i] == 0 || data2[i] == 0)
+            {
+                throw VectorOperationException("Division by zero encountered.");
+            }
+            else
+            {
+                result_data.push_back(data1[i] / data2[i]);
+            }
+        }
+
+        // Return the new vector with the result data.
+        return NewVector(result_data);
+    }
+};
+
+
+// New vector member function definitions.
+NewVector NewVector::operator*(const NewVector &v2) const
+{
+    // Check if the vectors have the same size and return an error if not.
+    if (get_size() != v2.get_size())
+    {
+        throw VectorOperationException("Vectors must be of the same size.");
+    }
+
+    // Call the multiplication functor with the two NewVector objects. Catch any errors.
+    try
+    {
+        NewVector m_vector = Multiplication()(*this, v2);
+        cout << "Result of vec1 * vec2:" << endl;
+        cout << m_vector << endl;
+        return m_vector;
+    }
+    catch (const VectorOperationException &msg)
+    {
+        cerr << "Vector operation error: " << msg.what() << endl;
+        return NewVector();
+    }
+}
+
+NewVector NewVector::operator/(const NewVector &v2) const
+{
+    // Call the division functor with the two NewVector objects. Catch any errors.
+    try
+    {
+        NewVector d_vector = Division()(*this, v2);
+        cout << "Result of vec1 / vec2:" << endl;
+        cout << d_vector << endl;
+        return d_vector;
+    }
+    catch (const VectorOperationException &msg)
+    {
+        cerr << "Vector operation error: " << msg.what() << endl;
+        return NewVector();
+    }
+}
+
+ostream &operator<<(ostream &out, const NewVector &v1)
+{
+    // Loop over the new vector and print the data elements.
+    for (auto val : v1.data)
+    {
+        out << val << " ";
+    }
+    return out;
+}
+
+
+#include <cctype>
+#include <iostream>
+#include <limits>
+#include <string>
+#include <vector>
+using namespace std;
+
+
+void get_manual_input(vector<float> &input_data)
+{
+    // For each element in the vector, request an input from the user.
+    for (int i = 0; i < input_data.size(); i++)
+    {
+        // Loop until a valid input has been received.
+        float input;
+        while (true)
+        {
+            cout << "Enter a number #" << i + 1 << " ";
+            // If cin is not able to go into size as an int...
+            if (!(cin >> input))
+            {
+                cin.clear();                                                // Clear the error flag.
+                cin.ignore(numeric_limits<streamsize>::max(), '\n');        // Ignore the invalid input.
+                cout << "Invalid input. ";
+            }
+            // A valid integer has been inputted.
+            else
+            {
+                input_data[i] = input;
+                break;
+            }
+        }
+    }
+}
+
+
+int process_input()
+{
+    // Loop until a valid input has been received.
+    int size;
+    while (true)
+    {
+        cout << "Enter the number of elements for the vector: ";
+        // If cin is not able to go into size as an int...
+        if (!(cin >> size))
+        {
+            cin.clear();                                                // Clear the error flag.
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');        // Ignore the invalid input.
+            cout << "Invalid input. ";
+        }
+        // A valid integer has been inputted.
+        else
+        {
+            break;
+        }
+    }
+    return size;
+}
+
+
+bool process_yes_or_no(string message)
+{
+    bool decision = false;
+    char input;
+
+    // Loop until a valid input has been received.
+    while (true)
+    {
+        cout << message;
+        // If cin is not able to go into char, or it is not Y/N ...
+        if (!(cin >> input) || (tolower(input) != 'y' && tolower(input) != 'n'))
+        {
+            cin.clear();                                                // Clear the error flag.
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');        // Ignore the invalid input.
+            cout << "Invalid input. ";
+        }
+        // A valid response has been inputted.
+        else
+        { 
+            if (tolower(input) == 'y')
+            {
+                decision = true;
+            }
+            break;
+        }
+    }
+    return decision;
+}
+
+
+#include <iostream>
+#include <exception>
+#include <string>
+using namespace std;
+
+
+// Custom exception class
+class VectorOperationException : public exception
+{
+private:
+    string message;
+
+public:
+    VectorOperationException(const string &msg) : message(msg) {}
+    // Override what() to return the custom message
+    virtual const char *what() const throw()
+    {
+        return message.c_str();
+    }
+};
